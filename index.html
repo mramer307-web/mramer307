@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>السحلية العظمية الكبيره</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            transition: background-color 1.5s ease;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .ui-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            padding: 15px 25px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            min-width: 280px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+        .level-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .progress-bar-bg {
+            width: 100%;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #00f2fe, #4facfe);
+            border-radius: 5px;
+            transition: width 0.2s ease, background 0.5s ease;
+        }
+        .stats {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 13px;
+            pointer-events: none;
+            letter-spacing: 1px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .shake {
+            animation: shake 0.3s ease-in-out;
+        }
+        @keyframes shake {
+            0% { transform: translate(0, 0); }
+            25% { transform: translate(-8px, 8px); }
+            50% { transform: translate(8px, -8px); }
+            75% { transform: translate(-8px, -8px); }
+            100% { transform: translate(0, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ui-container">
+        <div class="level-title">
+            <span>المستوى <span id="level-num">1</span></span>
+            <span id="level-name" style="font-size: 14px; color: #888;">البطريق</span>
+        </div>
+        <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progress-fill"></div>
+        </div>
+        <div class="stats">
+            <span>الخبرة: <span id="xp-text">0</span></span>
+            <span>العقبات: <span id="obs-count">8</span></span>
+        </div>
+    </div>
+
+    <div class="controls-hint">تحكم بواسطة الماوس أو أزرار (W, A, S, D) لتفادي العقبات الحمراء</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // إعدادات المستويات (المستوى الأول: البطريق بـ 8 كرات)
+        const levelConfig = [
+            { level: 1, name: "البطريق", color: "#ffffff", bg: "#050505", reqXP: 12000, followSpeed: 0.22, keySpeed: 8, obstacles: 8 },
+            { level: 2, name: "الشفق النيوني", color: "#00f2fe", bg: "#03101e", reqXP: 35000, followSpeed: 0.16, keySpeed: 6.5, obstacles: 10 },
+            { level: 3, name: "الغابة المرجانية", color: "#00ff88", bg: "#021a10", reqXP: 75000, followSpeed: 0.11, keySpeed: 5, obstacles: 12 },
+            { level: 4, name: "الرماد البركاني", color: "#ff4b1f", bg: "#1a0502", reqXP: 135000, followSpeed: 0.07, keySpeed: 3.5, obstacles: 14 },
+            { level: 5, name: "الجمشت الملكي", color: "#b92b27", bg: "#15021a", reqXP: 220000, followSpeed: 0.04, keySpeed: 2.2, obstacles: 16 },
+            { level: 6, name: "ميسي", color: "#ffd700", bg: "#1e1a02", reqXP: 350000, followSpeed: 0.025, keySpeed: 1.4, obstacles: 18 }
+        ];
+
+        let currentLevelIdx = 0;
+        let totalDistanceMoved = 0;
+        let prevTargetPos = { x: canvas.width / 2, y: canvas.height / 2 };
+
+        const targetPos = { x: canvas.width / 2, y: canvas.height / 2 };
+        const creaturePos = { x: canvas.width / 2, y: canvas.height / 2 };
+
+        const keys = { w: false, a: false, s: false, d: false };
+
+        window.addEventListener('keydown', (e) => {
+            const k = e.key.toLowerCase();
+            if (k === 'w' || k === 'ص') keys.w = true;
+            if (k === 'a' || k === 'ش') keys.a = true;
+            if (k === 's' || k === 'س') keys.s = true;
+            if (k === 'd' || k === 'ي') keys.d = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const k = e.key.toLowerCase();
+            if (k === 'w' || k === 'ص') keys.w = false;
+            if (k === 'a' || k === 'ش') keys.a = false;
+            if (k === 's' || k === 'س') keys.s = false;
+            if (k === 'd' || k === 'ي') keys.d = false;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            targetPos.x = e.clientX;
+            targetPos.y = e.clientY;
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                targetPos.x = e.touches[0].clientX;
+                targetPos.y = e.touches[0].clientY;
+            }
+        });
+
+        class Obstacle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.radius = Math.random() * 12 + 14;
+                this.x = Math.random() * (canvas.width - 100) + 50;
+                this.y = Math.random() * (canvas.height - 100) + 50;
+                this.vx = (Math.random() - 0.5) * 2.5;
+                this.vy = (Math.random() - 0.5) * 2.5;
+                this.pulse = Math.random() * Math.PI;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (this.x - this.radius < 0 || this.x + this.radius > canvas.width) this.vx *= -1;
+                if (this.y - this.radius < 0 || this.y + this.radius > canvas.height) this.vy *= -1;
+
+                this.pulse += 0.05;
+            }
+
+            draw() {
+                const currentRadius = this.radius + Math.sin(this.pulse) * 2;
+                
+                ctx.save();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ff0033';
+                ctx.fillStyle = '#ff0033';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius * 0.4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        let obstacles = [];
+
+        function updateObstaclesCount() {
+            const count = levelConfig[currentLevelIdx].obstacles;
+            obstacles = [];
+            for (let i = 0; i < count; i++) {
+                obstacles.push(new Obstacle());
+            }
+            document.getElementById('obs-count').innerText = count;
+        }
+
+        class Node {
+            constructor(x, y, size) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+            }
+        }
+
+        class SkeletonCreature {
+            constructor(x, y) {
+                this.nodes = [];
+                this.numNodes = 36;
+                for (let i = 0; i < this.numNodes; i++) {
+                    this.nodes.push(new Node(x, y, (this.numNodes - i) * 0.45 + 3));
+                }
+
+                this.legs = [
+                    { index: 5, length: 65, side: 1 },
+                    { index: 5, length: 65, side: -1 },
+                    { index: 12, length: 75, side: 1 },
+                    { index: 12, length: 75, side: -1 },
+                    { index: 21, length: 55, side: 1 },
+                    { index: 21, length: 55, side: -1 }
+                ];
+            }
+
+            update(targetX, targetY, followSpeed) {
+                creaturePos.x += (targetX - creaturePos.x) * followSpeed;
+                creaturePos.y += (targetY - creaturePos.y) * followSpeed;
+
+                if (this.nodes.length > 0) {
+                    this.nodes[0].x = creaturePos.x;
+                    this.nodes[0].y = creaturePos.y;
+                }
+
+                for (let i = 1; i < this.nodes.length; i++) {
+                    const prev = this.nodes[i - 1];
+                    const curr = this.nodes[i];
+                    const dx = prev.x - curr.x;
+                    const dy = prev.y - curr.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const targetDist = 11;
+
+                    if (dist > targetDist) {
+                        const angle = Math.atan2(dy, dx);
+                        curr.x = prev.x - Math.cos(angle) * targetDist;
+                        curr.y = prev.y - Math.sin(angle) * targetDist;
+                    }
+                }
+            }
+
+            draw(color) {
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.lineWidth = 2;
+
+                this.legs.forEach(leg => {
+                    const node = this.nodes[leg.index];
+                    if (!node) return;
+                    const nextNode = this.nodes[leg.index + 2] || node;
+                    
+                    const dx = nextNode.x - node.x;
+                    const dy = nextNode.y - node.y;
+                    const spineAngle = Math.atan2(dy, dx);
+                    
+                    const legBaseAngle = spineAngle + (Math.PI / 2) * leg.side;
+                    const jointX = node.x + Math.cos(legBaseAngle) * leg.length * 0.65;
+                    const jointY = node.y + Math.sin(legBaseAngle) * leg.length * 0.65;
+                    
+                    const footX = jointX + Math.cos(legBaseAngle + leg.side * 0.5) * leg.length * 0.75;
+                    const footY = jointY + Math.sin(legBaseAngle + leg.side * 0.5) * leg.length * 0.75;
+
+                    ctx.beginPath();
+                    ctx.moveTo(node.x, node.y);
+                    ctx.lineTo(jointX, jointY);
+                    ctx.lineTo(footX, footY);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.arc(footX, footY, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                for (let i = 0; i < this.nodes.length; i++) {
+                    const node = this.nodes[i];
+
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, Math.max(1, node.size * 0.35), 0, Math.PI * 2);
+                    ctx.fill();
+
+                    if (i > 2 && i < 19 && i % 2 === 0) {
+                        const prev = this.nodes[i - 1];
+                        const dx = node.x - prev.x;
+                        const dy = node.y - prev.y;
+                        const angle = Math.atan2(dy, dx) + Math.PI / 2;
+
+                        const ribLength = (19 - i) * 1.6 + 8;
+                        const rx1 = node.x + Math.cos(angle) * ribLength;
+                        const ry1 = node.y + Math.sin(angle) * ribLength;
+                        const rx2 = node.x - Math.cos(angle) * ribLength;
+                        const ry2 = node.y - Math.sin(angle) * ribLength;
+
+                        ctx.beginPath();
+                        ctx.moveTo(rx1, ry1);
+                        ctx.lineTo(node.x, node.y);
+                        ctx.lineTo(rx2, ry2);
+                        ctx.stroke();
+                    }
+                }
+
+                ctx.beginPath();
+                ctx.moveTo(this.nodes[0].x, this.nodes[0].y);
+                for (let i = 1; i < this.nodes.length; i++) {
+                    ctx.lineTo(this.nodes[i].x, this.nodes[i].y);
+                }
+                ctx.globalAlpha = 0.4;
+                ctx.stroke();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        const creature = new SkeletonCreature(canvas.width / 2, canvas.height / 2);
+
+        function handleKeyboardInput(keySpeed) {
+            if (keys.w) targetPos.y -= keySpeed;
+            if (keys.s) targetPos.y += keySpeed;
+            if (keys.a) targetPos.x -= keySpeed;
+            if (keys.d) targetPos.x += keySpeed;
+
+            targetPos.x = Math.max(20, Math.min(canvas.width - 20, targetPos.x));
+            targetPos.y = Math.max(20, Math.min(canvas.height - 20, targetPos.y));
+        }
+
+        function checkCollisions() {
+            const head = creature.nodes[0];
+            obstacles.forEach(obs => {
+                const dx = head.x - obs.x;
+                const dy = head.y - obs.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < obs.radius + 10) {
+                    totalDistanceMoved = Math.max(0, totalDistanceMoved - 1000);
+                    obs.reset();
+                    
+                    document.body.classList.add('shake');
+                    setTimeout(() => document.body.classList.remove('shake'), 300);
+                }
+            });
+        }
+
+        function updateProgress() {
+            const dx = targetPos.x - prevTargetPos.x;
+            const dy = targetPos.y - prevTargetPos.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist > 0.5) {
+                totalDistanceMoved += dist;
+                prevTargetPos = { x: targetPos.x, y: targetPos.y };
+            }
+
+            const currentConfig = levelConfig[currentLevelIdx];
+            const prevReq = currentLevelIdx > 0 ? levelConfig[currentLevelIdx - 1].reqXP : 0;
+            
+            if (totalDistanceMoved >= currentConfig.reqXP && currentLevelIdx < levelConfig.length - 1) {
+                currentLevelIdx++;
+                applyLevelTheme();
+                updateObstaclesCount();
+            }
+
+            const levelXP = totalDistanceMoved - prevReq;
+            const levelMaxXP = currentConfig.reqXP - prevReq;
+            const pct = Math.min(100, Math.max(0, (levelXP / levelMaxXP) * 100));
+
+            document.getElementById('level-num').innerText = currentConfig.level;
+            document.getElementById('level-name').innerText = currentConfig.name;
+            document.getElementById('xp-text').innerText = Math.floor(totalDistanceMoved);
+            
+            const fillBar = document.getElementById('progress-fill');
+            fillBar.style.width = pct + '%';
+            fillBar.style.background = currentConfig.color;
+        }
+
+        function applyLevelTheme() {
+            const config = levelConfig[currentLevelIdx];
+            document.body.style.backgroundColor = config.bg;
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const config = levelConfig[currentLevelIdx];
+            handleKeyboardInput(config.keySpeed);
+            updateProgress();
+
+            obstacles.forEach(obs => {
+                obs.update();
+                obs.draw();
+            });
+
+            checkCollisions();
+
+            creature.update(targetPos.x, targetPos.y, config.followSpeed);
+            creature.draw(config.color);
+
+            requestAnimationFrame(animate);
+        }
+
+        applyLevelTheme();
+        updateObstaclesCount();
+        animate();
+    </script>
+</body>
+</html>
